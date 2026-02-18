@@ -1,0 +1,41 @@
+name: "AWS Lambda Version Pruner"
+description: "Prune old AWS Lambda published versions by count and/or age."
+author: "suzujun"
+
+inputs:
+  function-name:
+    description: "Target Lambda function name."
+    required: true
+  aws-region:
+    description: "AWS region of the target Lambda function."
+    required: true
+  keep-latest:
+    description: "Keep latest N published versions. Older versions become candidates."
+    required: false
+  older-than-days:
+    description: "Select versions older than N days as candidates."
+    required: false
+  dry-run:
+    description: "If true, only show delete candidates without deleting."
+    required: false
+    default: "false"
+  delete-aliased-versions:
+    description: "If true, versions referenced by aliases are also deletable."
+    required: false
+    default: "false"
+
+outputs:
+  total-versions:
+    description: "Total published versions considered (excluding $LATEST)."
+  selected-count:
+    description: "Number of versions selected as deletion candidates."
+  deleted-count:
+    description: "Number of versions actually deleted."
+  selected-versions:
+    description: "JSON array of selected version numbers."
+  deleted-versions:
+    description: "JSON array of deleted version numbers."
+
+runs:
+  using: "node24"
+  main: "index.js"

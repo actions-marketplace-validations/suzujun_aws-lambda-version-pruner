@@ -1,0 +1,20 @@
+{
+  "name": "aws-lambda-version-pruner",
+  "version": "1.0.0",
+  "description": "GitHub Action to prune AWS Lambda published versions by count and age.",
+  "main": "index.js",
+  "scripts": {
+    "check": "node --check index.js"
+  },
+  "keywords": [
+    "github-action",
+    "aws",
+    "lambda"
+  ],
+  "author": "suzujun",
+  "license": "MIT",
+  "dependencies": {
+    "@actions/core": "1.11.1",
+    "@aws-sdk/client-lambda": "3.938.0"
+  }
+}
