@@ -5,7 +5,7 @@ The action runs as a JavaScript action on `node24`.
 
 ## Features
 
-- Operates on a single Lambda function per run
+- Operates on one or multiple Lambda functions per run
 - Supports using `keep-latest` and `older-than-days` together (OR condition)
 - Supports `dry-run` mode to preview deletion candidates (default: `false`)
 - Excludes alias-referenced versions by default
@@ -29,7 +29,7 @@ Minimum GitHub Actions permissions:
 
 | Name                      | Required | Type                     | Default | Description                                         |
 | ------------------------- | -------- | ------------------------ | ------- | --------------------------------------------------- |
-| `function-name`           | Yes      | string                   | -       | Target Lambda function name                         |
+| `function-name`           | Yes      | string                   | -       | Target Lambda function name(s), single or newline-separated |
 | `aws-region`              | Yes      | string                   | -       | Target AWS region                                   |
 | `keep-latest`             | No       | integer (`>= 0`)         | -       | Keep the latest N versions                          |
 | `older-than-days`         | No       | integer (`>= 1`)         | -       | Select versions older than N days                   |
@@ -41,16 +41,17 @@ Notes:
 - At least one of `keep-latest` or `older-than-days` is required.
 - If both are provided, a version is selected when either condition matches (OR).
 - `$LATEST` is never deleted.
+- For multiple functions, pass `function-name` as a multiline string (newline-separated).
 
 ## Outputs
 
 | Name                | Type                | Description                                            |
 | ------------------- | ------------------- | ------------------------------------------------------ |
-| `total-versions`    | string (number)     | Total number of published versions excluding `$LATEST` |
+| `total-versions`    | string (number)     | Total number of published versions across all target functions excluding `$LATEST` |
 | `selected-count`    | string (number)     | Number of selected deletion candidates                 |
 | `deleted-count`     | string (number)     | Number of versions actually deleted                    |
-| `selected-versions` | string (JSON array) | JSON array of selected version numbers                 |
-| `deleted-versions`  | string (JSON array) | JSON array of deleted version numbers                  |
+| `selected-versions` | string (JSON array) | JSON array of selected versions as objects (`[{ "functionName": "...", "version": "..." }]`) |
+| `deleted-versions`  | string (JSON array) | JSON array of deleted versions as objects (`[{ "functionName": "...", "version": "..." }]`) |
 
 ## Example
 
@@ -79,7 +80,9 @@ jobs:
       - name: Prune lambda versions
         uses: suzujun/aws-lambda-version-pruner@v1
         with:
-          function-name: my-lambda-function
+          function-name: |
+            my-lambda-function-a
+            my-lambda-function-b
           aws-region: ap-northeast-1
           keep-latest: "10"
           older-than-days: "30"

@@ -43,6 +43,22 @@ function parseIntegerInput(name, options = {}) {
   return value;
 }
 
+function parseFunctionNamesInput() {
+  const raw = core.getInput("function-name", { required: true });
+  const functionNames = raw
+    .split(/\r?\n/)
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+
+  if (functionNames.length === 0) {
+    throw new Error(
+      'Input "function-name" must contain at least one Lambda function name.',
+    );
+  }
+
+  return [...new Set(functionNames)];
+}
+
 async function listAllVersions(client, functionName) {
   const versions = [];
   let marker;
@@ -94,24 +110,14 @@ function toEpochMillis(lastModified) {
   return epoch;
 }
 
-async function run() {
-  const functionName = core.getInput("function-name", { required: true });
-  const region = core.getInput("aws-region", { required: true });
-  const keepLatest = parseIntegerInput("keep-latest", { min: 0 });
-  const olderThanDays = parseIntegerInput("older-than-days", { min: 1 });
-  const dryRun = parseBooleanInput("dry-run", false);
-  const deleteAliasedVersions = parseBooleanInput(
-    "delete-aliased-versions",
-    false,
-  );
-
-  if (keepLatest === undefined && olderThanDays === undefined) {
-    throw new Error(
-      'At least one of "keep-latest" or "older-than-days" must be specified.',
-    );
-  }
-
-  const client = new LambdaClient({ region });
+async function pruneFunctionVersions({
+  client,
+  functionName,
+  keepLatest,
+  olderThanThresholdMillis,
+  deleteAliasedVersions,
+  dryRun,
+}) {
   const allVersions = await listAllVersions(client, functionName);
   const publishedVersions = allVersions
     .filter((version) => version.Version && version.Version !== "$LATEST")
@@ -132,11 +138,6 @@ async function run() {
       keepSet.add(publishedVersions[i].version);
     }
   }
-
-  const olderThanThresholdMillis =
-    olderThanDays !== undefined
-      ? Date.now() - olderThanDays * 24 * 60 * 60 * 1000
-      : undefined;
 
   const aliasedVersions = deleteAliasedVersions
     ? new Set()
@@ -162,14 +163,6 @@ async function run() {
   const deleted = [];
   const failures = [];
 
-  core.info(`Function: ${functionName}`);
-  core.info(`Region: ${region}`);
-  core.info(`dry-run: ${dryRun}`);
-  core.info(`delete-aliased-versions: ${deleteAliasedVersions}`);
-  core.info(`total published versions: ${publishedVersions.length}`);
-  core.info(`selected candidates: ${selected.length}`);
-  core.info(`selected versions: ${JSON.stringify(selected)}`);
-
   if (!dryRun) {
     for (const version of selected) {
       try {
@@ -182,6 +175,7 @@ async function run() {
         deleted.push(version);
       } catch (error) {
         failures.push({
+          functionName,
           version,
           message: error instanceof Error ? error.message : String(error),
         });
@@ -189,7 +183,71 @@ async function run() {
     }
   }
 
-  core.setOutput("total-versions", String(publishedVersions.length));
+  return {
+    publishedCount: publishedVersions.length,
+    selected,
+    deleted,
+    failures,
+  };
+}
+
+async function run() {
+  const functionNames = parseFunctionNamesInput();
+  const region = core.getInput("aws-region", { required: true });
+  const keepLatest = parseIntegerInput("keep-latest", { min: 0 });
+  const olderThanDays = parseIntegerInput("older-than-days", { min: 1 });
+  const dryRun = parseBooleanInput("dry-run", false);
+  const deleteAliasedVersions = parseBooleanInput(
+    "delete-aliased-versions",
+    false,
+  );
+
+  if (keepLatest === undefined && olderThanDays === undefined) {
+    throw new Error(
+      'At least one of "keep-latest" or "older-than-days" must be specified.',
+    );
+  }
+
+  const client = new LambdaClient({ region });
+  const olderThanThresholdMillis =
+    olderThanDays !== undefined
+      ? Date.now() - olderThanDays * 24 * 60 * 60 * 1000
+      : undefined;
+
+  const selected = [];
+  const deleted = [];
+  const failures = [];
+  let totalVersions = 0;
+
+  core.info(`Functions: ${functionNames.join(", ")}`);
+  core.info(`Region: ${region}`);
+  core.info(`dry-run: ${dryRun}`);
+  core.info(`delete-aliased-versions: ${deleteAliasedVersions}`);
+  for (const functionName of functionNames) {
+    const result = await pruneFunctionVersions({
+      client,
+      functionName,
+      keepLatest,
+      olderThanThresholdMillis,
+      deleteAliasedVersions,
+      dryRun,
+    });
+
+    totalVersions += result.publishedCount;
+    for (const version of result.selected) {
+      selected.push({ functionName, version });
+    }
+    for (const version of result.deleted) {
+      deleted.push({ functionName, version });
+    }
+    failures.push(...result.failures);
+
+    core.info(`[${functionName}] total published versions: ${result.publishedCount}`);
+    core.info(`[${functionName}] selected candidates: ${result.selected.length}`);
+    core.info(`[${functionName}] selected versions: ${JSON.stringify(result.selected)}`);
+  }
+
+  core.setOutput("total-versions", String(totalVersions));
   core.setOutput("selected-count", String(selected.length));
   core.setOutput("deleted-count", String(deleted.length));
   core.setOutput("selected-versions", JSON.stringify(selected));
@@ -197,10 +255,10 @@ async function run() {
 
   await core.summary
     .addHeading("AWS Lambda Version Pruner")
-    .addRaw(`Function: ${functionName}\n`, true)
+    .addRaw(`Functions: ${functionNames.join(", ")}\n`, true)
     .addRaw(`Region: ${region}\n`, true)
     .addRaw(`Dry run: ${dryRun}\n`, true)
-    .addRaw(`Total versions: ${publishedVersions.length}\n`, true)
+    .addRaw(`Total versions: ${totalVersions}\n`, true)
     .addRaw(`Selected candidates: ${selected.length}\n`, true)
     .addRaw(`Deleted: ${deleted.length}\n`, true)
     .write();

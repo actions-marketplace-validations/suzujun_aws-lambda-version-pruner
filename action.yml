@@ -4,7 +4,7 @@ author: "suzujun"
 
 inputs:
   function-name:
-    description: "Target Lambda function name."
+    description: "Target Lambda function name(s). Use a single name or newline-separated multiple names."
     required: true
   aws-region:
     description: "AWS region of the target Lambda function."
@@ -26,15 +26,15 @@ inputs:
 
 outputs:
   total-versions:
-    description: "Total published versions considered (excluding $LATEST)."
+    description: "Total published versions considered across all target functions (excluding $LATEST)."
   selected-count:
-    description: "Number of versions selected as deletion candidates."
+    description: "Number of versions selected as deletion candidates across all target functions."
   deleted-count:
-    description: "Number of versions actually deleted."
+    description: "Number of versions actually deleted across all target functions."
   selected-versions:
-    description: "JSON array of selected version numbers."
+    description: "JSON array of selected versions as objects: [{\"functionName\":\"...\",\"version\":\"...\"}]."
   deleted-versions:
-    description: "JSON array of deleted version numbers."
+    description: "JSON array of deleted versions as objects: [{\"functionName\":\"...\",\"version\":\"...\"}]."
 
 runs:
   using: "node24"
